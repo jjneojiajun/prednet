@@ -36,52 +36,60 @@ f.close()
 train_model = model_from_json(json_string, custom_objects = {'PredNet': PredNet})
 train_model.load_weights(weights_file)
 
-# Create testing model (to output predictions)
-layer_config = train_model.layers[1].get_config()
-layer_config['output_mode'] = 'prediction'
-data_format = layer_config['data_format'] if 'data_format' in layer_config else layer_config['dim_ordering']
-test_prednet = PredNet(weights=train_model.layers[1].get_weights(), **layer_config)
-input_shape = list(train_model.layers[0].batch_input_shape[1:])
-input_shape[0] = nt
-inputs = Input(shape=tuple(input_shape))
-predictions = test_prednet(inputs)
-test_model = Model(inputs=inputs, outputs=predictions)
+# Save Training Model
+train_model_json = train_model.to_json()
+with open("train_model.json"," wb") as json_file:
+    json_file.write(train_model_json)
+# Serialize Weights to HDF
+train_model.save_weights("train_model.h5")
+print("Saved Model to Disk")
 
-test_generator = SequenceGenerator(test_file, test_sources, nt, sequence_start_mode='unique', data_format=data_format)
-X_test = test_generator.create_all()
-X_hat = test_model.predict(X_test, batch_size)
-if data_format == 'channels_first':
-    X_test = np.transpose(X_test, (0, 1, 3, 4, 2))
-    X_hat = np.transpose(X_hat, (0, 1, 3, 4, 2))
+# # Create testing model (to output predictions)
+# layer_config = train_model.layers[1].get_config()
+# layer_config['output_mode'] = 'prediction'
+# data_format = layer_config['data_format'] if 'data_format' in layer_config else layer_config['dim_ordering']
+# test_prednet = PredNet(weights=train_model.layers[1].get_weights(), **layer_config)
+# input_shape = list(train_model.layers[0].batch_input_shape[1:])
+# input_shape[0] = nt
+# inputs = Input(shape=tuple(input_shape))
+# predictions = test_prednet(inputs)
+# test_model = Model(inputs=inputs, outputs=predictions)
 
-# Compare MSE of PredNet predictions vs. using last frame.  Write results to prediction_scores.txt
-mse_model = np.mean( (X_test[:, 1:] - X_hat[:, 1:])**2 )  # look at all timesteps except the first
-mse_prev = np.mean( (X_test[:, :-1] - X_test[:, 1:])**2 )
-if not os.path.exists(RESULTS_SAVE_DIR): os.mkdir(RESULTS_SAVE_DIR)
-f = open(RESULTS_SAVE_DIR + 'prediction_scores.txt', 'w')
-f.write("Model MSE: %f\n" % mse_model)
-f.write("Previous Frame MSE: %f" % mse_prev)
-f.close()
+# test_generator = SequenceGenerator(test_file, test_sources, nt, sequence_start_mode='unique', data_format=data_format)
+# X_test = test_generator.create_all()
+# X_hat = test_model.predict(X_test, batch_size)
+# if data_format == 'channels_first':
+#     X_test = np.transpose(X_test, (0, 1, 3, 4, 2))
+#     X_hat = np.transpose(X_hat, (0, 1, 3, 4, 2))
 
-# Plot some predictions
-aspect_ratio = float(X_hat.shape[2]) / X_hat.shape[3]
-plt.figure(figsize = (nt, 2*aspect_ratio))
-gs = gridspec.GridSpec(2, nt)
-gs.update(wspace=0., hspace=0.)
-plot_save_dir = os.path.join(RESULTS_SAVE_DIR, 'prediction_plots/')
-if not os.path.exists(plot_save_dir): os.mkdir(plot_save_dir)
-plot_idx = np.random.permutation(X_test.shape[0])[:n_plot]
-for i in plot_idx:
-    for t in range(nt):
-        plt.subplot(gs[t])
-        plt.imshow(X_test[i,t], interpolation='none')
-        plt.tick_params(axis='both', which='both', bottom='off', top='off', left='off', right='off', labelbottom='off', labelleft='off')
-        if t==0: plt.ylabel('Actual', fontsize=10)
+# # Compare MSE of PredNet predictions vs. using last frame.  Write results to prediction_scores.txt
+# mse_model = np.mean( (X_test[:, 1:] - X_hat[:, 1:])**2 )  # look at all timesteps except the first
+# mse_prev = np.mean( (X_test[:, :-1] - X_test[:, 1:])**2 )
+# if not os.path.exists(RESULTS_SAVE_DIR): os.mkdir(RESULTS_SAVE_DIR)
+# f = open(RESULTS_SAVE_DIR + 'prediction_scores.txt', 'w')
+# f.write("Model MSE: %f\n" % mse_model)
+# f.write("Previous Frame MSE: %f" % mse_prev)
+# f.close()
 
-        plt.subplot(gs[t + nt])
-        plt.imshow(X_hat[i,t], interpolation='none')
-        plt.tick_params(axis='both', which='both', bottom='off', top='off', left='off', right='off', labelbottom='off', labelleft='off')
-        if t==0: plt.ylabel('Predicted', fontsize=10)
+# # Plot some predictions
+# aspect_ratio = float(X_hat.shape[2]) / X_hat.shape[3]
+# plt.figure(figsize = (nt, 2*aspect_ratio))
+# gs = gridspec.GridSpec(2, nt)
+# gs.update(wspace=0., hspace=0.)
+# plot_save_dir = os.path.join(RESULTS_SAVE_DIR, 'prediction_plots/')
+# if not os.path.exists(plot_save_dir): os.mkdir(plot_save_dir)
+# plot_idx = np.random.permutation(X_test.shape[0])[:n_plot]
+# for i in plot_idx:
+#     for t in range(nt):
+#         plt.subplot(gs[t])
+#         plt.imshow(X_test[i,t], interpolation='none')
+#         plt.tick_params(axis='both', which='both', bottom='off', top='off', left='off', right='off', labelbottom='off', labelleft='off')
+#         if t==0: plt.ylabel('Actual', fontsize=10)
 
-    plt.savefig(plot_save_dir +  'plot_' + str(i) + '.png')
-    plt.clf()
+#         plt.subplot(gs[t + nt])
+#         plt.imshow(X_hat[i,t], interpolation='none')
+#         plt.tick_params(axis='both', which='both', bottom='off', top='off', left='off', right='off', labelbottom='off', labelleft='off')
+#         if t==0: plt.ylabel('Predicted', fontsize=10)
+
+#     plt.savefig(plot_save_dir +  'plot_' + str(i) + '.png')
+#     plt.clf()
